@@ -1,0 +1,13 @@
+{
+  "name": "trend-scraper",
+  "version": "0.1.0",
+  "description": "Multi-platform trend scraping infrastructure",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "typescript": "^5.5.0",
+    "zod": "^3.23.8"
+  }
+}
