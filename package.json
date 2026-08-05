@@ -1,17 +1,20 @@
 {
   "name": "trend-scraper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Multi-platform trend scraping infrastructure",
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "typescript": "^5.5.0",
     "zod": "^3.23.8",
     "ioredis": "^5.4.1",
-    "@prisma/client": "^5.19.1"
+    "@prisma/client": "^5.19.1",
+    "crawlee": "^3.11.1",
+    "playwright": "^1.47.2"
   },
   "devDependencies": {
     "prisma": "^5.19.1",
