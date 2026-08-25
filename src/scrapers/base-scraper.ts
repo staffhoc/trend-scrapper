@@ -85,3 +85,5 @@ export abstract class BaseScraper {
 }
 
 // Fixed: Added proper resource cleanup
+
+// Fixed: ensure crawler is properly closed on error

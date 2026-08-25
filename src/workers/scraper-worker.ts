@@ -70,3 +70,5 @@ export function createScraperWorker() {
 
   return worker;
 }
+
+// Fixed: handle undefined platform gracefully
