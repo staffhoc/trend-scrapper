@@ -1,40 +1,932 @@
+// TrendFlow - TikTok Shop Intelligence Platform
+// Prisma Schema
+
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserType {
+  CREATOR
+  SELLER
+}
+
+enum Locale {
+  US
+  UK
+  ID
+  MY
+  TH
+  VN
+  PH
+  NG
+  KE
+  DE
+  CA
+  UG
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+enum AlertType {
+  RANK_CHANGE
+  VELOCITY_SPIKE
+  PRICE_DROP
+  NEW_VIRAL
+  COMMISSION_CHANGE
+}
+
+enum AlertStatus {
+  UNREAD
+  READ
+  DISMISSED
+}
+
+enum ItemType {
+  PRODUCT
+  SOUND
+  SHOP
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum AffiliateTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum ReferralStatus {
+  PENDING
+  ACTIVE
+  CHURNED
+}
+
+enum VideoStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?   // NextAuth expects this field
+  userType      UserType  @default(CREATOR)
+  locale        Locale    @default(US)
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Notification preferences
+  notifyEmail      Boolean @default(true)
+  notifyPush       Boolean @default(true)
+  notifyWeekly     Boolean @default(true)
+  notifyBreakout   Boolean @default(true)
+  notifyMarketing  Boolean @default(false)
+
+  // App preferences
+  theme       String  @default("system") // "light", "dark", "system"
+  compactView Boolean @default(false)
+
+  // Relations
+  accounts           Account[]
+  sessions           Session[]
+  subscription       Subscription?
+  watchlistItems     WatchlistItem[]
+  alerts             Alert[]
+  alertRules         AlertRule[]
+  affiliateAccount   AffiliateAccount?
+  generatedVideos    GeneratedVideo[]
+  chatSessions       ChatSession[]
+  videoCredits       VideoCredits?
+  pushSubscriptions  PushSubscription[]
+  dailyUsage         DailyUsage[]
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PendingSignup {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  agreedToTerms Boolean  @default(false)
+  agreedAt      DateTime?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime @default(dbgenerated("NOW() + INTERVAL '24 hours'"))
+
+  @@index([email])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String   // Public key
+  auth      String   // Auth secret
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================================
+// SUBSCRIPTIONS & BILLING
+// ============================================================================
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  tier                 SubscriptionTier   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+}
+
+model Plan {
+  id                   String           @id @default(cuid())
+  name                 String
+  tier                 SubscriptionTier @unique
+  priceMonthly         Int // in cents
+  priceYearly          Int // in cents
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  features             String[]
+  limits               Json // { watchlistItems: 10, alerts: 5, etc. }
+  isActive             Boolean          @default(true)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  stripeInvoiceId  String        @unique
+  stripeCustomerId String
+  userId           String
+  amount           Int // in cents
+  currency         String        @default("usd")
+  status           InvoiceStatus @default(DRAFT)
+  description      String?
+  invoiceUrl       String? // Stripe hosted invoice URL
+  invoicePdf       String? // PDF download URL
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([stripeCustomerId])
+  @@index([status])
+}
+
+// ============================================================================
+// PRODUCTS
+// ============================================================================
+
 model Product {
-  id          String   @id @default(cuid())
-  externalId  String   @unique
-  platform    String
-  market      String
-  title       String
-  price       Float
-  imageUrl    String?
-  productUrl  String
-  soldCount   Int      @default(0)
-  rating      Float?
-  rank        Int?
-  category    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String  @id @default(cuid())
+  externalId     String  @unique // TikTok Shop product ID
+  locale         Locale
+  name           String
+  description    String? @db.Text
+  imageUrl       String?
+  price          Float
+  originalPrice  Float?
+  currency       String  @default("USD")
+  commissionRate Float // percentage
+  categoryId     String?
+  shopId         String?
+
+  // Metrics
+  totalSales   Int    @default(0)
+  totalRevenue Float  @default(0)
+  totalVideos  Int    @default(0)
+  avgRating    Float?
+  reviewCount  Int    @default(0)
+
+  // Ranking
+  currentRank  Int?
+  previousRank Int?
+  rankChange   Int  @default(0)
+
+  // Velocity metrics
+  salesVelocity  Float @default(0) // sales per day
+  velocityChange Float @default(0) // percentage change
+
+  // Timestamps
+  firstSeenAt   DateTime @default(now())
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  category       Category?         @relation(fields: [categoryId], references: [id])
+  shop           Shop?             @relation(fields: [shopId], references: [id])
+  snapshots      ProductSnapshot[]
+  watchlistItems WatchlistItem[]
+  predictions    Prediction[]
+  videos         Video[]
+
+  @@index([locale])
+  @@index([categoryId])
+  @@index([shopId])
+  @@index([currentRank])
+  @@index([salesVelocity])
+  @@index([commissionRate])
+}
+
+model ProductSnapshot {
+  id            String   @id @default(cuid())
+  productId     String
+  price         Float
+  totalSales    Int
+  totalRevenue  Float
+  rank          Int?
+  salesVelocity Float
+  snapshotDate  DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, snapshotDate])
+  @@index([snapshotDate])
+}
+
+// ============================================================================
+// SOUNDS
+// ============================================================================
+
+model Sound {
+  id         String  @id @default(cuid())
+  externalId String  @unique // TikTok sound ID
+  locale     Locale
+  title      String
+  authorName String?
+  duration   Int? // in seconds
+  coverUrl   String?
+  audioUrl   String?
+
+  // Metrics
+  videoCount      Int @default(0)
+  dailyVideoCount Int @default(0)
+
+  // Ranking
+  currentRank  Int?
+  previousRank Int?
+  rankChange   Int  @default(0)
+
+  // Velocity metrics
+  videoVelocity  Float @default(0) // videos per day
+  velocityChange Float @default(0) // percentage change
+
+  // Trend indicators
+  isViral    Boolean @default(false)
+  isTrending Boolean @default(false)
+
+  // Timestamps
+  firstSeenAt   DateTime @default(now())
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  snapshots      SoundSnapshot[]
+  watchlistItems WatchlistItem[]
+  predictions    Prediction[]
+  videos         Video[]
+
+  @@index([locale])
+  @@index([currentRank])
+  @@index([videoVelocity])
+  @@index([isViral])
+  @@index([isTrending])
+}
+
+model SoundSnapshot {
+  id            String   @id @default(cuid())
+  soundId       String
+  videoCount    Int
+  rank          Int?
+  videoVelocity Float
+  snapshotDate  DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  sound Sound @relation(fields: [soundId], references: [id], onDelete: Cascade)
+
+  @@index([soundId, snapshotDate])
+  @@index([snapshotDate])
+}
+
+// ============================================================================
+// CATEGORIES & SHOPS
+// ============================================================================
+
+model Category {
+  id         String  @id @default(cuid())
+  externalId String?
+  locale     Locale
+  name       String
+  slug       String
+  parentId   String?
+  level      Int     @default(0)
+
+  // Metrics
+  productCount  Int    @default(0)
+  avgPrice      Float?
+  avgCommission Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@unique([locale, slug])
+  @@index([locale])
+  @@index([parentId])
+}
+
+model Shop {
+  id          String  @id @default(cuid())
+  externalId  String  @unique // TikTok Shop ID
+  locale      Locale
+  name        String
+  description String? @db.Text
+  logoUrl     String?
+
+  // Metrics
+  productCount  Int    @default(0)
+  totalSales    Int    @default(0)
+  totalRevenue  Float  @default(0)
+  avgRating     Float?
+  reviewCount   Int    @default(0)
+  followerCount Int    @default(0)
+
+  // Verification
+  isVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  products       Product[]
+  snapshots      ShopSnapshot[]
+  watchlistItems WatchlistItem[]
+
+  @@index([locale])
+  @@index([totalRevenue])
+}
+
+model ShopSnapshot {
+  id            String   @id @default(cuid())
+  shopId        String
+  productCount  Int
+  totalSales    Int
+  totalRevenue  Float
+  followerCount Int
+  snapshotDate  DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, snapshotDate])
+}
+
+// ============================================================================
+// HASHTAGS
+// ============================================================================
+
+model Hashtag {
+  id         String @id @default(cuid())
+  externalId String @unique // TikTok hashtag ID
+  locale     Locale
+  name       String
+
+  // Metrics
+  videoCount Int @default(0)
+  viewCount  BigInt @default(0)
+
+  // Ranking
+  currentRank  Int?
+  previousRank Int?
+  rankChange   Int @default(0)
+
+  // Status
+  isTrending Boolean @default(false)
+  isNew      Boolean @default(false)
+
+  // Trend data
+  trendData Json?
+
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Snapshots
+  snapshots HashtagSnapshot[]
+
+  @@index([locale])
+  @@index([currentRank])
+  @@index([viewCount])
+  @@index([isTrending])
+}
+
+model HashtagSnapshot {
+  id           String   @id @default(cuid())
+  hashtagId    String
+  snapshotDate DateTime @default(now())
+  videoCount   Int
+  viewCount    BigInt
+  rank         Int?
+
+  // Relations
+  hashtag Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@index([hashtagId, snapshotDate])
+}
+
+// ============================================================================
+// CREATORS & VIDEOS
+// ============================================================================
+
+model Creator {
+  id          String  @id @default(cuid())
+  externalId  String  @unique // TikTok user ID
+  locale      Locale
+  username    String
+  displayName String?
+  avatarUrl   String?
+  bio         String? @db.Text
+
+  // Metrics
+  followerCount  Int @default(0)
+  followingCount Int @default(0)
+  videoCount     Int @default(0)
+  likeCount      Int @default(0)
+
+  // Affiliate info
+  isAffiliate    Boolean @default(false)
+  affiliateSales Int     @default(0)
+
+  // Verification
+  isVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  videos Video[]
+
+  @@index([locale])
+  @@index([followerCount])
+  @@index([isAffiliate])
+}
+
+model Video {
+  id         String  @id @default(cuid())
+  externalId String  @unique // TikTok video ID
+  locale     Locale
+  creatorId  String?
+  soundId    String?
+  productId  String?
+
+  // Content
+  description  String? @db.Text
+  thumbnailUrl String?
+  videoUrl     String?
+  duration     Int? // in seconds
+
+  // Metrics
+  viewCount    Int @default(0)
+  likeCount    Int @default(0)
+  commentCount Int @default(0)
+  shareCount   Int @default(0)
+
+  // Engagement
+  engagementRate Float?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  creator Creator? @relation(fields: [creatorId], references: [id])
+  sound   Sound?   @relation(fields: [soundId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([locale])
+  @@index([creatorId])
+  @@index([soundId])
+  @@index([productId])
+  @@index([viewCount])
+  @@index([publishedAt])
+}
+
+// ============================================================================
+// WATCHLIST & ALERTS
+// ============================================================================
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  itemType  ItemType
+  productId String?
+  soundId   String?
+  shopId    String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sound   Sound?   @relation(fields: [soundId], references: [id], onDelete: Cascade)
+  shop    Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@unique([userId, soundId])
+  @@unique([userId, shopId])
+  @@index([userId])
+  @@index([itemType])
+}
+
+model Alert {
+  id        String      @id @default(cuid())
+  userId    String
+  type      AlertType
+  status    AlertStatus @default(UNREAD)
+  title     String
+  message   String      @db.Text
+  itemType  ItemType?
+  itemId    String? // productId or soundId
+  metadata  Json? // Additional context data
+  createdAt DateTime    @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+model AlertRule {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  isActive    Boolean   @default(true)
+  itemType    ItemType?
+  alertType   AlertType
+  threshold   Float? // e.g., rank change > 10, velocity > 50%
+  conditions  Json? // Complex conditions
+  notifyEmail Boolean   @default(false)
+  notifyPush  Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+// ============================================================================
+// PREDICTIONS (AI)
+// ============================================================================
+
+model Prediction {
+  id        String   @id @default(cuid())
+  itemType  ItemType
+  productId String?
+  soundId   String?
+
+  // Prediction data
+  confidenceScore    Float // 0-100
+  predictedPeakDate  DateTime
+  predictedPeakValue Float
+  currentValue       Float
+  accelerationScore  Float // 0-100
+  signals            String[] // Key signals that triggered prediction
+
+  // Outcome tracking
+  actualPeakDate  DateTime?
+  actualPeakValue Float?
+  wasAccurate     Boolean?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sound   Sound?   @relation(fields: [soundId], references: [id], onDelete: Cascade)
+
+  @@index([itemType])
+  @@index([confidenceScore])
+  @@index([predictedPeakDate])
+}
+
+// ============================================================================
+// AI VIDEO GENERATOR
+// ============================================================================
+
+model GeneratedVideo {
+  id     String @id @default(cuid())
+  userId String
+
+  // Input
+  prompt    String  @db.Text
+  style     String?
+  duration  Int? // in seconds
+  soundId   String? // Reference to trending sound
+  productId String? // Reference to product
+
+  // Output
+  status       VideoStatus @default(QUEUED)
+  videoUrl     String?
+  thumbnailUrl String?
+  errorMessage String?
+
+  // Credits
+  creditsUsed Int @default(1)
+
+  // Timestamps
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model VideoCredits {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  totalCredits   Int      @default(0)
+  usedCredits    Int      @default(0)
+  monthlyCredits Int      @default(10) // Credits reset monthly based on plan
+  lastResetAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DailyUsage {
+  id              String   @id @default(cuid())
+  userId          String
+  date            DateTime @db.Date // The date this usage is for
+  productViews    Int      @default(0)
+  soundViews      Int      @default(0)
+  searchCount     Int      @default(0)
+  exportCount     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ============================================================================
+// AI STRATEGY ASSISTANT
+// ============================================================================
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String // 'user' | 'assistant'
+  content   String   @db.Text
+  metadata  Json? // For storing context, citations, etc.
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// ============================================================================
+// AFFILIATE PROGRAM
+// ============================================================================
+
+model AffiliateAccount {
+  id           String        @id @default(cuid())
+  userId       String        @unique
+  referralCode String        @unique
+  tier         AffiliateTier @default(BRONZE)
+
+  // Earnings
+  totalEarnings    Float @default(0)
+  pendingPayout    Float @default(0)
+  lifetimeEarnings Float @default(0)
+
+  // Metrics
+  totalReferrals  Int   @default(0)
+  activeReferrals Int   @default(0)
+  conversionRate  Float @default(0)
+
+  // Payout info
+  payoutEmail  String?
+  payoutMethod String? // 'paypal' | 'stripe' | 'bank'
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals Referral[]
+  payouts   Payout[]
+
+  @@index([referralCode])
+  @@index([tier])
+}
+
+model Referral {
+  id                 String         @id @default(cuid())
+  affiliateAccountId String
+  referredEmail      String
+  referredUserId     String? // Set when user signs up
+  status             ReferralStatus @default(PENDING)
+
+  // Subscription tracking
+  subscribedTier    SubscriptionTier?
+  monthlyCommission Float             @default(0)
+  totalCommission   Float             @default(0)
+
+  signedUpAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  affiliateAccount AffiliateAccount @relation(fields: [affiliateAccountId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateAccountId])
+  @@index([status])
+  @@index([referredEmail])
+}
+
+model Payout {
+  id                 String    @id @default(cuid())
+  affiliateAccountId String
+  amount             Float
+  currency           String    @default("USD")
+  status             String // 'pending' | 'processing' | 'completed' | 'failed'
+  payoutMethod       String
+  transactionId      String?
+  notes              String?
+  processedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  affiliateAccount AffiliateAccount @relation(fields: [affiliateAccountId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateAccountId])
+  @@index([status])
+}
+
+// ============================================================================
+// ADMIN
+// ============================================================================
+
+model AdminUser {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  role        String    @default("admin") // 'admin' | 'super_admin'
+  permissions String[]
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model SystemMetric {
+  id         String   @id @default(cuid())
+  name       String
+  value      Float
+  unit       String?
+  metadata   Json?
+  recordedAt DateTime @default(now())
+
+  @@index([name, recordedAt])
 }
 
 model DataIngestionJob {
-  id            String   @id @default(cuid())
-  platform      String
-  market        String
-  dataType      String
-  status        String
-  itemsFound    Int      @default(0)
-  itemsCreated  Int      @default(0)
-  itemsUpdated  Int      @default(0)
-  itemsFailed   Int      @default(0)
-  errorMessage  String?
-  startedAt     DateTime @default(now())
-  completedAt   DateTime?
+  id             String    @id @default(cuid())
+  type           String // 'products' | 'sounds' | 'shops' | 'creators'
+  locale         Locale
+  status         String // 'pending' | 'running' | 'completed' | 'failed'
+  itemsProcessed Int       @default(0)
+  itemsFailed    Int       @default(0)
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([type, locale])
+  @@index([status])
+  @@index([createdAt])
 }
