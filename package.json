@@ -1,6 +1,6 @@
 {
   "name": "trend-scraper",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Multi-platform trend scraping infrastructure",
   "main": "src/index.ts",
   "scripts": {
@@ -16,7 +16,8 @@
     "@prisma/client": "^5.19.1",
     "crawlee": "^3.11.1",
     "playwright": "^1.47.2",
-    "bullmq": "^5.12.15"
+    "bullmq": "^5.12.15",
+    "@sentry/node": "^8.28.0"
   },
   "devDependencies": {
     "prisma": "^5.19.1",
