@@ -1,0 +1,26 @@
+app = "trend-scraper-de"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  MARKET = "DE"
+
+[processes]
+  worker = "npm run worker"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+[deploy]
+  release_command = "npx prisma migrate deploy"

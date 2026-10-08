@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "REDIS_URL": "@redis_url",
+    "MARKET": "US"
+  },
+  "crons": [
+    {
+      "path": "/api/cron/scrape",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
