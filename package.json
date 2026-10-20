@@ -1,26 +1,42 @@
 {
   "name": "trend-scraper",
-  "version": "0.5.0",
-  "description": "Multi-platform trend scraping infrastructure",
-  "main": "src/index.ts",
+  "version": "1.0.0",
+  "description": "Multi-platform trend intelligence scraping infrastructure",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "worker": "tsx src/workers/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "worker": "tsx src/workers/index.ts",
+    "scrape:tiktok": "tsx src/scrapers/tiktok/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "scraper",
+    "tiktok",
+    "trends",
+    "ecommerce"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "typescript": "^5.5.0",
-    "zod": "^3.23.8",
-    "ioredis": "^5.4.1",
     "@prisma/client": "^5.19.1",
-    "crawlee": "^3.11.1",
-    "playwright": "^1.47.2",
+    "@sentry/node": "^8.28.0",
     "bullmq": "^5.12.15",
-    "@sentry/node": "^8.28.0"
+    "crawlee": "^3.11.1",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "playwright": "^1.47.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^22.5.5",
     "prisma": "^5.19.1",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
