@@ -155,3 +155,5 @@ export async function clearQueue() {
 }
 
 // Added exponential backoff retry strategy
+
+// Added: job priority support

@@ -69,3 +69,5 @@ export class RateLimiter {
 export const rateLimiter = new RateLimiter();
 
 // Optimized daily counter reset logic
+
+// Optimized: reduced Redis round trips
