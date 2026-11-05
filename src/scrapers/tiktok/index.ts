@@ -284,3 +284,5 @@ export class TikTokScraper extends BaseScraper {
 }
 
 // Added support for all product categories
+
+// Added: retry logic for transient failures

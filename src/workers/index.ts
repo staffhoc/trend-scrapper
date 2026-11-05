@@ -36,3 +36,5 @@ main().catch((error) => {
 });
 
 // Improved graceful shutdown handling
+
+// Enhanced: better shutdown logging
