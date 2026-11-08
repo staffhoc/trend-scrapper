@@ -1,5 +1,5 @@
 # Trend Scraper
-
+#
 Multi-platform trend intelligence scraping infrastructure for TikTok, Instagram, Amazon, Alibaba, and more.
 
 ## Features
